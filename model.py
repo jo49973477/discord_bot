@@ -1,8 +1,16 @@
 from google import genai
 import os
+import hydra
+from omegaconf import DictConfig, OmegaConf
+from config import MainConfig
 
+
+hydra.initialize(version_base=None, config_path="conf")
+cfg = hydra.compose(config_name="config")
+raw_config = OmegaConf.to_container(cfg, resolve=True)
+main_cfg = MainConfig(**raw_config)
 # API 키 설정 (직접 입력하거나 환경변수)
-client = genai.Client(api_key="AIzaSyDKCDyyIqNzT8PIhlNKkryKTTcxNyzVjF0")
+client = genai.Client(api_key=main_cfg.client)
 
 print("=== 내 API 키로 사용 가능한 모델 목록 ===")
 try:
