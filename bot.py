@@ -22,10 +22,13 @@ from langchain_community.document_loaders import WebBaseLoader
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 
+import traceback
+
 os.environ["USER_AGENT"] = "TakanashiKiara"
 
+
 def build_brain(cfg):
-    
+
     loader = WebBaseLoader(cfg.site)
     documents = loader.load()
 
@@ -35,19 +38,19 @@ def build_brain(cfg):
 
     # C. 벡터 저장소 만들기 (텍스트를 숫자로 바꿔서 검색 가능하게 만듦)
     # 임베딩 모델: 텍스트의 의미를 파악하는 모델
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004",
-                                              google_api_key = cfg.client)
-    vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
-    
-    # D. 검색기(Retriever) 생성
-    retriever = vectorstore.as_retriever(
-        search_kwargs={"k": 1} 
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/text-embedding-004", google_api_key=cfg.client
     )
-    
+    vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
+
+    # D. 검색기(Retriever) 생성
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
     return retriever
 
+
 def build_grok_brain(cfg):
-    
+
     loader = WebBaseLoader(cfg.site)
     documents = loader.load()
 
@@ -56,17 +59,13 @@ def build_grok_brain(cfg):
 
     # [수정] 구글 대신 로컬 임베딩 사용!
     # 이 모델은 한국어 검색에 특화되어 있고, 내 컴퓨터 CPU로 돌아갑니다. (API 키 필요 없음)
-    embeddings = HuggingFaceEmbeddings(
-        model_name="jhgan/ko-sroberta-multitask"
-    )
-    
+    embeddings = HuggingFaceEmbeddings(model_name="jhgan/ko-sroberta-multitask")
+
     # 나머지는 동일
     vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
-    
-    retriever = vectorstore.as_retriever(
-        search_kwargs={"k": 4} 
-    )
-    
+
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
     return retriever
 
 
@@ -81,22 +80,17 @@ def main():
 
     if main_cfg.model.startswith("gemma") or main_cfg.model.startswith("gemini"):
         llm = ChatGoogleGenerativeAI(
-        model = main_cfg.model,
-        temperature = 0.7,
-        api_key = main_cfg.client
+            model=main_cfg.model, temperature=0.7, api_key=main_cfg.client
         )
         retriever = build_brain(main_cfg)
 
     else:
         llm = ChatGroq(
-            model = main_cfg.model, 
-            temperature = 0.7,
-            api_key = main_cfg.client# (당연히 config.yaml로 빼는 게 좋겠죠?)
+            model=main_cfg.model,
+            temperature=0.7,
+            api_key=main_cfg.client,  # (당연히 config.yaml로 빼는 게 좋겠죠?)
         )
         retriever = build_grok_brain(main_cfg)
-
-    
-    
 
     template = """
         {prompt_persona}
@@ -119,19 +113,19 @@ def main():
 
     # 2. 체인 연결 (여기가 핵심!)
     rag_chain = (
-        # [1단계: 재료 손질] 
+        # [1단계: 재료 손질]
         # 들어온 입력(x)을 받아서 프롬프트가 원하는 3가지 재료로 바꿉니다.
         {
-            "context": retriever,                   # 검색해서 채우기
-            "question": RunnablePassthrough(),      # 사용자의 말 그대로 채우기
-            "prompt_persona": lambda x: main_cfg.prompt  # ★ 고정된 설정값 넣기 (람다 사용!)
+            "context": retriever,  # 검색해서 채우기
+            "question": RunnablePassthrough(),  # 사용자의 말 그대로 채우기
+            "prompt_persona": lambda x: (
+                main_cfg.prompt
+            ),  # ★ 고정된 설정값 넣기 (람다 사용!)
         }
-        
         # [2단계: 요리]
-        | prompt_template 
-        
+        | prompt_template
         # [3단계: 서빙]
-        | llm 
+        | llm
         | StrOutputParser()
     )
 
@@ -144,39 +138,70 @@ def main():
     async def on_ready():
         activity = discord.Game(name="closing the case... 🔎", type=1)
         await bot.change_presence(status=discord.Status.online, activity=activity)
-        print(f'🔎Test test, Hello, {bot.user.name}, Amelia Watson! #1 Detective at your service!🔍')
+        print(
+            f"🔎Test test, Hello, {bot.user.name}, Amelia Watson! #1 Detective at your service!🔍"
+        )
 
     @bot.event
     async def on_message(message):
         # 봇이 쓴 메시지는 무시
         if message.author == bot.user:
             return
-        
-        content_lower = message.content.lower() # 소문자로 변환해서 검사
+
+        content_lower = message.content.lower()  # 소문자로 변환해서 검사
         keywords_tuple = tuple(main_cfg.keywords)
-        
+
         should_respond = (
-            content_lower.startswith(keywords_tuple) or 
-            bot.user.mentioned_in(message) or 
-            isinstance(message.channel, discord.DMChannel)
+            content_lower.startswith(keywords_tuple)
+            or bot.user.mentioned_in(message)
+            or isinstance(message.channel, discord.DMChannel)
         )
 
         if should_respond:
-            async with message.channel.typing(): 
-                # 사용자의 질문에서 봇 언급 부분 제거
+            async with message.channel.typing():
+                # 호출 키워드 제거
                 clean_text = message.content
-                for k in main_cfg.keywords:
+                for k in keywords_tuple:
                     if clean_text.lower().startswith(k):
-                        clean_text = clean_text[len(k):].strip()
+                        clean_text = clean_text[len(k) :].strip()
                         break
-                
-                # RAG 실행
-                response = rag_chain.invoke(clean_text)
-                
-                # 대답 전송
-                await message.reply(response)
 
-    # 3. 봇 실행 (yaml에 저장된 디스코드 토큰 사용)
+                # ★ 여기가 핵심! 에러 처리 구간 시작 ★
+                try:
+                    # 1. RAG 체인 실행 (동기 함수를 비동기로 실행해서 봇 멈춤 방지)
+                    # (만약 asyncio.to_thread가 어렵다면 그냥 response = rag_chain.invoke(clean_text)로 해도 됨)
+                    response = await asyncio.to_thread(rag_chain.invoke, clean_text)
+
+                    # 2. 정상적인 답변 전송
+                    await message.reply(response)
+
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"❌ Error occurred: {error_msg}")
+                    print("============ 🚨 에러 발생 로그 🚨 ============")
+                    traceback.print_exc()
+                    print("==============================================")
+
+                    # (1) API 한도 초과 (Rate Limit / 413 / 429)
+                    if (
+                        "413" in error_msg
+                        or "rate_limit" in error_msg.lower()
+                        or "quota" in error_msg.lower()
+                    ):
+                        await message.reply(
+                            "🕵️‍♀️ [Amelia is exhausted!] \n"
+                            "Teamate, I consumed all quota of my stamina today!💦\n"
+                            "Come here tomorrow, or request my assistant to pay some (ice) tea for me, hic!"
+                        )
+
+                    # (2) 그 외 알 수 없는 에러
+                    else:
+                        await message.reply(
+                            f"🕵️‍♀️ [Time-Space error occurred]\n"
+                            f"Please report this error to my detective office assistant, Yeongyoo Jo!😵‍💫\n"
+                            f"```\n{error_msg}\n```"
+                        )
+
     bot.run(main_cfg.discord_token)
 
 

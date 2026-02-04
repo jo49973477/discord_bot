@@ -11,6 +11,6 @@ try:
         if "generateContent" in model.supported_actions:
             print(f"- {model.name}")
             # 별명 말고 resource_name(본명)도 확인
-            print(f"  (ID: {model.name.split('/')[-1]})") 
+            print(f"  (ID: {model.name.split('/')[-1]})")
 except Exception as e:
     print(f"에러 발생: {e}")

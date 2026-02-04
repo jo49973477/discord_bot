@@ -21,8 +21,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 os.environ["USER_AGENT"] = "TakanashiKiara"
 
+
 def build_brain(cfg):
-    
+
     loader = WebBaseLoader(cfg.site)
     documents = loader.load()
 
@@ -32,19 +33,19 @@ def build_brain(cfg):
 
     # C. 벡터 저장소 만들기 (텍스트를 숫자로 바꿔서 검색 가능하게 만듦)
     # 임베딩 모델: 텍스트의 의미를 파악하는 모델
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004",
-                                              google_api_key = cfg.client)
-    vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
-    
-    # D. 검색기(Retriever) 생성
-    retriever = vectorstore.as_retriever(
-        search_kwargs={"k": 1} 
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/text-embedding-004", google_api_key=cfg.client
     )
-    
+    vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
+
+    # D. 검색기(Retriever) 생성
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 1})
+
     return retriever
 
+
 def build_grok_brain(cfg):
-    
+
     loader = WebBaseLoader(cfg.site)
     documents = loader.load()
 
@@ -53,17 +54,13 @@ def build_grok_brain(cfg):
 
     # [수정] 구글 대신 로컬 임베딩 사용!
     # 이 모델은 한국어 검색에 특화되어 있고, 내 컴퓨터 CPU로 돌아갑니다. (API 키 필요 없음)
-    embeddings = HuggingFaceEmbeddings(
-        model_name="jhgan/ko-sroberta-multitask"
-    )
-    
+    embeddings = HuggingFaceEmbeddings(model_name="jhgan/ko-sroberta-multitask")
+
     # 나머지는 동일
     vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
-    
-    retriever = vectorstore.as_retriever(
-        search_kwargs={"k": 4} 
-    )
-    
+
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
     return retriever
 
 
@@ -78,22 +75,17 @@ async def main():
 
     if main_cfg.model.startswith("gemma") or main_cfg.model.startswith("gemini"):
         llm = ChatGoogleGenerativeAI(
-        model = main_cfg.model,
-        temperature = 0.7,
-        api_key = main_cfg.client
+            model=main_cfg.model, temperature=0.7, api_key=main_cfg.client
         )
         retriever = build_brain(main_cfg)
 
     else:
         llm = ChatGroq(
-            model = main_cfg.model, 
-            temperature = 0.7,
-            api_key = main_cfg.client# (당연히 config.yaml로 빼는 게 좋겠죠?)
+            model=main_cfg.model,
+            temperature=0.7,
+            api_key=main_cfg.client,  # (당연히 config.yaml로 빼는 게 좋겠죠?)
         )
         retriever = build_grok_brain(main_cfg)
-
-    
-    
 
     template = """
         {prompt_persona}
@@ -116,19 +108,19 @@ async def main():
 
     # 2. 체인 연결 (여기가 핵심!)
     rag_chain = (
-        # [1단계: 재료 손질] 
+        # [1단계: 재료 손질]
         # 들어온 입력(x)을 받아서 프롬프트가 원하는 3가지 재료로 바꿉니다.
         {
-            "context": retriever,                   # 검색해서 채우기
-            "question": RunnablePassthrough(),      # 사용자의 말 그대로 채우기
-            "prompt_persona": lambda x: main_cfg.prompt  # ★ 고정된 설정값 넣기 (람다 사용!)
+            "context": retriever,  # 검색해서 채우기
+            "question": RunnablePassthrough(),  # 사용자의 말 그대로 채우기
+            "prompt_persona": lambda x: (
+                main_cfg.prompt
+            ),  # ★ 고정된 설정값 넣기 (람다 사용!)
         }
-        
         # [2단계: 요리]
-        | prompt_template 
-        
+        | prompt_template
         # [3단계: 서빙]
-        | llm 
+        | llm
         | StrOutputParser()
     )
 
