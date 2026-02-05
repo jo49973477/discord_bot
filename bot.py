@@ -87,7 +87,8 @@ def main():
 
     if main_cfg.model.startswith("gemma") or main_cfg.model.startswith("gemini"):
         llm = ChatGoogleGenerativeAI(
-            model=main_cfg.model, temperature=0.7, api_key=main_cfg.client
+            model=main_cfg.model, temperature=0.7, api_key=main_cfg.client,
+            safety_settings = safety_settings
         )
         retriever = build_brain(main_cfg)
 
