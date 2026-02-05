@@ -21,6 +21,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
+from google.genai.types import HarmCategory, HarmBlockThreshold
 
 import traceback
 
@@ -75,6 +76,12 @@ def main():
     cfg = hydra.compose(config_name="config")
     raw_config = OmegaConf.to_container(cfg, resolve=True)
     main_cfg = MainConfig(**raw_config)
+
+    safety_settings = {
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        # 나머지도 필요하면 설정
+    }
 
     os.environ["GOOGLE_API_KEY"] = cfg.client
 
