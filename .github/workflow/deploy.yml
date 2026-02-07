@@ -1,0 +1,28 @@
+name: Deploy to Watson Industry Server
+
+# 언제 실행할까? -> main 브랜치에 코드가 push 되었을 때!
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚚 Get latest code
+        uses: actions/checkout@v3
+
+      - name: 🚀 Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            cd ~/discord_bot
+            git pull origin master
+            uv sync
+            pm2 restart amelia
+            
+            echo "🎉 Time-Space Error fixed!"
