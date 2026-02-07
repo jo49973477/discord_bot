@@ -2,6 +2,7 @@ from google import genai
 import asyncio
 from openai import AsyncOpenAI
 import os
+import time
 
 import discord
 from discord.ext import commands
@@ -14,7 +15,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter, CharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -34,20 +35,36 @@ def build_brain(cfg):
     documents = loader.load()
 
     # B. 텍스트 쪼개기 (너무 길면 검색이 어려우니 문단 단위로 자름)
-    text_splitter = CharacterTextSplitter(chunk_size=300, chunk_overlap=30)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,       
+        chunk_overlap=200,     
+        length_function=len,
+        is_separator_regex=False,
+        separators=["\n\n", "\n", " ", ""] 
+    )
     splits = text_splitter.split_documents(documents)
 
-    # C. 벡터 저장소 만들기 (텍스트를 숫자로 바꿔서 검색 가능하게 만듦)
-    # 임베딩 모델: 텍스트의 의미를 파악하는 모델
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004", google_api_key=cfg.client
+        model="models/gemini-embedding-001", google_api_key=cfg.client
     )
-    vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
+    
+    batch_size = 5
+    vectorstore = None
+    for i in range(0, len(splits), batch_size):
+        batch = splits[i : i + batch_size]
+        print(f"Processing batch {i//batch_size + 1}/{(len(splits)//batch_size)+1}...")
+        
+        if vectorstore is None:
+            # 첫 번째 배치는 벡터 저장소를 생성
+            vectorstore = FAISS.from_documents(batch, embeddings)
+        else:
+            # 두 번째부터는 기존 저장소에 추가
+            vectorstore.add_documents(batch)
+            
+        time.sleep(2)  # 2초 휴식 (API 과부하 방지)
 
-    # D. 검색기(Retriever) 생성
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-
-    return retriever
+    print("✅ 임베딩 완료!")
+    return vectorstore.as_retriever()
 
 
 def build_grok_brain(cfg):
