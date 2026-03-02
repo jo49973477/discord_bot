@@ -3,7 +3,7 @@ name: Deploy to Watson Industry Server
 # 언제 실행할까? -> main 브랜치에 코드가 push 되었을 때!
 on:
   push:
-    branches: [ main ]
+    branches: [ "master" ]
 
 jobs:
   deploy:
