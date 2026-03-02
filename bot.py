@@ -95,9 +95,10 @@ def main():
     main_cfg = MainConfig(**raw_config)
 
     safety_settings = {
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        # 나머지도 필요하면 설정
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE, # 성적 콘텐츠 제한 해제
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,        # 괴롭힘/욕설 제한 해제
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,       # 혐오 발언 제한 해제
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE, # 위험한 콘텐츠 제한 해제
     }
 
     os.environ["GOOGLE_API_KEY"] = cfg.client
